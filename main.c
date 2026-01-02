@@ -72,3 +72,99 @@
  *
  * =================================================================================
  */
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+#define MEMORY_SIZE 8192
+#define NUM_REGS 16
+
+//struct to cpu
+
+typedef struct {
+    uint16_t reg[NUM_REGS];       // R0 a R15
+    uint16_t memory[MEMORY_SIZE]; // Memória RAM (0x0000 - 0x2000)
+    uint16_t ir;                  // Instruction Register
+    int flag_z;                   // Flag Zero
+    int flag_c;                   // Flag Carry
+    bool mem_access[MEMORY_SIZE]; // Para rastrear posições acessadas p/ o print final
+} CPU;
+
+//init cpu function
+
+void cpu_init(CPU *cpu) {
+    for (int i = 0; i < NUM_REGS; i++) {
+        cpu->reg[i] = 0;
+    }
+    for (int i = 0; i < MEMORY_SIZE; i++) {
+        cpu->memory[i] = 0;
+        cpu->mem_access[i] = false;
+    }
+    cpu->ir = 0;
+    cpu->flag_z = 0;
+    cpu->flag_c = 0;
+    cpu->reg[14] = 0x2000; // Initialize SP
+    cpu->reg[15] = 0;      // Initialize PC
+}
+
+//Loader function
+
+void load_program(CPU *cpu, const char *filename) {
+    FILE *f = fopen(filename, "r");
+    if (!f) {
+        perror("Failed to open file");
+        exit(EXIT_FAILURE);
+    }
+
+    uint16_t address, content;
+    while (fscanf(f, "%hx %hx", &address, &content) == 2) {
+        if (address < MEMORY_SIZE) {
+            cpu->memory[address] = content;
+        }
+    }
+
+    fclose(f);
+}
+
+//cicle FETCH ONLY SEARCH INSTRUCTION
+void cpu_run(CPU *cpu) {
+    while (1) {
+        uint16_t pc = cpu->reg[15];
+
+        cpu->ir = cpu->memory[pc];
+        cpu->mem_access[pc] = true;
+
+        cpu->reg[15]++; // PC incrementa antes da execucao
+
+        uint16_t opcode = cpu->ir & 0x000F;
+
+        switch (opcode) {
+            case 0x0: // HALT (exemplo)
+                printf("HALT encontrado\n");
+                return;
+
+            default:
+                printf("Opcode nao implementado: 0x%X\n", opcode);
+                return;
+        }
+    }
+}
+
+//main function
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Uso: %s programa.txt\n", argv[0]);
+        return 1;
+    }
+
+    CPU cpu;
+    cpu_init(&cpu);
+    load_program(&cpu, argv[1]);
+    cpu_run(&cpu);
+
+    return 0;
+}
