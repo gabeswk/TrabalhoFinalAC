@@ -87,6 +87,7 @@
 typedef struct {
     uint16_t reg[NUM_REGS];
     uint16_t memory[MEMORY_SIZE];
+    bool mem_access[MEMORY_SIZE];
     uint16_t ir;
     int flag_z;
     int flag_c;
@@ -124,6 +125,8 @@ void cpu_init(CPU *cpu) {
 
     for (int i = 0; i < MEMORY_SIZE; i++)
         cpu->memory[i] = 0;
+    for (int i = 0; i < MEMORY_SIZE; i++)
+        cpu->mem_access[i] = false;
 
     cpu->flag_z = 0;
     cpu->flag_c = 0;
@@ -233,6 +236,57 @@ void cpu_run(CPU *cpu) {
             cpu->flag_c = (cpu->reg[rm] < cpu->reg[rn]);
             break;
 
+        /* ================= MEMÓRIA ================= */
+
+        case 0x2: { // LDR
+            uint16_t addr = cpu->reg[rm] + imm4;
+
+            if (addr >= 0xF000) {
+                if (addr == 0xF000)
+                    cpu->reg[rd] = getchar();
+                else if (addr == 0xF002)
+                    scanf("%hd", &cpu->reg[rd]);
+            } else {
+                mem_check(addr);
+                cpu->mem_access[addr] = true;
+                cpu->reg[rd] = cpu->memory[addr];
+            }
+            break;
+        }
+
+        case 0x3: { // STR
+            uint16_t addr = cpu->reg[rm] + imm4;
+
+            if (addr >= 0xF000) {
+                if (addr == 0xF001)
+                    putchar(cpu->reg[rn]);
+                else if (addr == 0xF003)
+                    printf("%d", cpu->reg[rn]);
+            } else {
+                mem_check(addr);
+                cpu->mem_access[addr] = true;
+                cpu->memory[addr] = cpu->reg[rn];
+            }
+            break;
+        }
+
+        /* ================= PILHA ================= */
+
+        case 0xE: // PUSH
+            cpu->reg[SP]--;
+            mem_check(cpu->reg[SP]);
+            cpu->memory[cpu->reg[SP]] = cpu->reg[rn];
+            cpu->mem_access[cpu->reg[SP]] = true;
+            break;
+
+        case 0xF: // POP
+            mem_check(cpu->reg[SP]);
+            cpu->reg[rd] = cpu->memory[cpu->reg[SP]];
+            cpu->reg[SP]++;
+            break;
+
+        /* ================= CONTROLE ================= */
+
         case 0x0: // JMP
             cpu->reg[PC] += imm12;
             break;
@@ -251,8 +305,8 @@ void cpu_run(CPU *cpu) {
             printf("Instrucao invalida: 0x%04X\n", cpu->ir);
             dump_cpu(cpu);
             return;
-        }
-    }
+}
+   }
 }
 
 int main(int argc, char *argv[]) {
