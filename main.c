@@ -1,3 +1,15 @@
+/*
+OBS: O código foi alterado para aceitar as entradas dos casos de teste do Moodle, caso o senhor 
+também queira com ele funcionando conforme o PDF do trabalho, pode falar com a gente.
+
+Equipe:
+João Pedro Teófilo da Silva
+Marcos Vinícius de Morais Maniçoba
+Antonio Gabriel de Sousa Xavier
+Gabriel Holanda Cunha
+Yuri Alves de Araújo
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
