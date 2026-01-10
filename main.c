@@ -19,7 +19,7 @@ typedef struct {
     uint16_t memoria[TAMANHO_MEMORIA];
     bool mem_acessada[TAMANHO_MEMORIA];
     uint16_t ir;
-    int flag_z;
+    int flag_z; 
     int flag_c;
 } CPU;
 
@@ -44,12 +44,10 @@ void imprimir_estado_cpu(CPU *cpu) {
     printf("C = %d\n", cpu->flag_c);
 
     for (int i = 0; i < TAMANHO_MEMORIA; i++) {
-        bool eh_pilha = (cpu->regs[SP] != 0x2000) && 
-                        (i >= cpu->regs[SP]) && 
-                        (i <= 0x1FFF);
+        bool pilha_aqui = (cpu->regs[SP] != 0x2000) &&  (i >= cpu->regs[SP]) &&  (i <= 0x1FFF);
 
-        if (cpu->mem_acessada[i] && !eh_pilha) {
-            printf("[ 0x%04hX ] = 0x%04hX\n", (unsigned short)i, (unsigned short)cpu->memoria[i]);
+        if (cpu->mem_acessada[i] && !pilha_aqui) {
+            printf("[0x%04hX] = 0x%04hX\n", (unsigned short)i, (unsigned short)cpu->memoria[i]);
         }
     }
 
@@ -57,7 +55,7 @@ void imprimir_estado_cpu(CPU *cpu) {
         int sp = cpu->regs[SP];
         if (sp < TAMANHO_MEMORIA) {
             for (int i = 0x1FFF; i >= sp; i--) {
-                printf("[ 0x%04hX ] = 0x%04hX\n", (unsigned short)i, (unsigned short)cpu->memoria[i]);
+                printf("[0x%04hX] = 0x%04hX\n", (unsigned short)i, (unsigned short)cpu->memoria[i]);
             }
         }
     }
@@ -74,20 +72,20 @@ void cpu_inicializar(CPU *cpu) {
     cpu->regs[PC] = 0;
 }
 
-void carregar_programa(CPU *cpu, const char *arquivo) {
-    FILE *f = fopen(arquivo, "r");
-    if (!f) {
-        perror("Erro ao abrir arquivo");
-        exit(1);
-    }
-
+void carregar_programa(CPU *cpu) {
+    char linha[256];
     uint16_t end, val;
-    while (fscanf(f, "%hx %hx", &end, &val) == 2) {
-        if (end < TAMANHO_MEMORIA) {
-            cpu->memoria[end] = val;
+    
+    while (fgets(linha, sizeof(linha), stdin)) {
+        if (sscanf(linha, "%hx %hx", &end, &val) == 2) {
+            if (end == 0 && val == 0) {
+                break;
+            }
+            if (end < TAMANHO_MEMORIA) {
+                cpu->memoria[end] = val;
+            }
         }
     }
-    fclose(f);
 }
 
 void cpu_executar(CPU *cpu, int num_bps, int *breakpoints) {
@@ -99,13 +97,6 @@ void cpu_executar(CPU *cpu, int num_bps, int *breakpoints) {
     short tmp;
 
     while (1) {
-        for (int i = 0; i < num_bps; i++) {
-            if (cpu->regs[PC] == breakpoints[i]) {
-                imprimir_estado_cpu(cpu);
-                getchar();
-            }
-        }
-
         if (cpu->regs[PC] >= TAMANHO_MEMORIA) {
             break;
         }
@@ -215,11 +206,11 @@ void cpu_executar(CPU *cpu, int num_bps, int *breakpoints) {
                     if (end == IO_CHAR_ENTRADA) {
                         ch = getchar();
                         cpu->regs[rd] = (uint16_t)(unsigned char)ch;
-                        printf("IN %c\n", (char)cpu->regs[rd]);
-                    } else if (end == IO_INT_ENTRADA) {
-                        scanf("%hd", &tmp);
-                        cpu->regs[rd] = (uint16_t)tmp;
-                        printf("IN %hd\n", tmp);
+                    } else {
+                        if (end == IO_INT_ENTRADA) {
+                            scanf("%hd", &tmp);
+                            cpu->regs[rd] = (uint16_t)tmp;
+                        }
                     }
                 } else {
                     verificar_memoria(end);
@@ -233,9 +224,11 @@ void cpu_executar(CPU *cpu, int num_bps, int *breakpoints) {
                 dado = cpu->regs[rn];
                 if (end >= 0xF000) {
                     if (end == IO_CHAR_SAIDA) {
-                        printf("OUT %c\n", (char)dado);
-                    } else if (end == IO_INT_SAIDA) {
-                        printf("OUT %hd\n", (short)dado);
+                        printf("%c\n", (char)dado);
+                    } else {
+                        if (end == IO_INT_SAIDA) {
+                            printf("%hd\n", (short)dado);
+                        }
                     }
                 } else {
                     verificar_memoria(end);
@@ -253,7 +246,7 @@ void cpu_executar(CPU *cpu, int num_bps, int *breakpoints) {
             case 0xF:
                 if (cpu->ir == 0xFFFF) {
                     imprimir_estado_cpu(cpu);
-                    return;
+                    exit(0);
                 } else {
                     verificar_memoria(cpu->regs[SP]);
                     cpu->regs[rd] = cpu->memoria[cpu->regs[SP]];
@@ -263,36 +256,37 @@ void cpu_executar(CPU *cpu, int num_bps, int *breakpoints) {
 
             default:
                 printf("Instrucao desconhecida: 0x%04hX em PC=0x%04hX\n", (unsigned short)cpu->ir, (unsigned short)pc_atual);
+                exit(1);
+        }
+
+        for (int i = 0; i < num_bps; i++) {
+            if (pc_atual == breakpoints[i]) {
                 imprimir_estado_cpu(cpu);
-                return;
+            }
         }
     }
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        printf("Uso: %s <arquivo.hex> [breakpoint1] [breakpoint2] ...\n", argv[0]);
-        return 1;
-    }
-
+int main(void) {
     CPU cpu;
     cpu_inicializar(&cpu);
-    carregar_programa(&cpu, argv[1]);
 
-    int num_bps = argc - 2;
+    int num_bps = 0;
     int *breakpoints = NULL;
 
-    if (num_bps > 0) {
-        breakpoints = (int*) malloc(num_bps * sizeof(int));
-        if (!breakpoints) {
-            printf("Erro de alocacao de memoria\n");
-            return 1;
-        }
-        for (int i = 0; i < num_bps; i++) {
-            breakpoints[i] = (int)strtol(argv[i + 2], NULL, 16);
+    if (scanf("%d", &num_bps) > 0) {
+        if (num_bps > 0) {
+            breakpoints = (int*) malloc(num_bps * sizeof(int));
+            for (int i = 0; i < num_bps; i++) {
+                scanf("%d", &breakpoints[i]);
+            }
         }
     }
+    
+    char lixo[256];
+    fgets(lixo, sizeof(lixo), stdin);
 
+    carregar_programa(&cpu);
     cpu_executar(&cpu, num_bps, breakpoints);
 
     if (breakpoints) {
